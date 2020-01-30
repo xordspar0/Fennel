@@ -508,6 +508,12 @@ local function makeScope(parent)
     }
 end
 
+local function hook(event, ...)
+    for _, plugin in ipairs(rootOptions.plugins or {}) do
+        if plugin[event] then plugin[event](...) end
+    end
+end
+
 -- Assert a condition and raise a compile error with line numbers. The ast arg
 -- should be unmodified so that its first element is the form being called.
 local function assertCompile(condition, msg, ast)
@@ -751,6 +757,7 @@ local function symbolToExpression(symbol, scope, isReference)
     if not isLocal then
         rootScope.refedglobals[parts[1]] = true
     end
+    hook("symbol-to-expression", symbol, scope)
     return expr(combineParts(parts, scope), etype)
 end
 
@@ -1073,6 +1080,7 @@ local function compile1(ast, scope, parent, opts)
                     keepSideEffects(subexprs, parent, 2, ast[i])
                 end
             end
+            hook("call", ast, scope)
             local call = ('%s(%s)'):format(tostring(fcallee), exprs1(fargs))
             exprs = handleCompileOpts({expr(call, 'statement')}, parent, opts, ast)
         end
@@ -1276,6 +1284,7 @@ local function destructure(to, from, ast, scope, parent, opts)
     end
 
     local ret = destructure1(to, nil, ast, true)
+    hook("destructure", from, to, scope)
     applyManglings(scope, newManglings, ast)
     return ret
 end
@@ -2254,8 +2263,13 @@ local function currentGlobalNames(env)
     return kvmap(env or _G, globalUnmangling)
 end
 
+local makeCompilerEnv
+
 local function eval(str, options, ...)
     local opts = copy(options)
+    if(opts.env == "COMPILER") then
+        opts.env = makeCompilerEnv(nil, COMPILER_SCOPE, {})
+    end
     -- eval and dofile are considered "live" entry points, so we can assume
     -- that the globals available at compile time are a reasonable allowed list
     -- UNLESS there's a metatable on env, in which case we can't assume that
@@ -2275,9 +2289,6 @@ end
 
 local function dofileFennel(filename, options, ...)
     local opts = copy(options)
-    if opts.allowedGlobals == nil then
-        opts.allowedGlobals = currentGlobalNames(opts.env)
-    end
     local f = assert(io.open(filename, "rb"))
     local source = f:read("*all"):gsub("^#![^\n]*\n", "")
     f:close()
@@ -2506,7 +2517,7 @@ module.doc = doc
 module.searcher = module.makeSearcher()
 module.make_searcher = module.makeSearcher -- oops backwards compatibility
 
-local function makeCompilerEnv(ast, scope, parent)
+makeCompilerEnv = function(ast, scope, parent)
     return setmetatable({
         -- State of compiler if needed
         _SCOPE = scope,
@@ -2523,6 +2534,8 @@ local function makeCompilerEnv(ast, scope, parent)
         sym = sym,
         unpack = unpack,
         gensym = function() return sym(gensym(macroCurrentScope)) end,
+        hook = hook,
+        ["assert-compile"] = assertCompile,
         ["list?"] = isList,
         ["multi-sym?"] = isMultiSym,
         ["sym?"] = isSym,
@@ -2532,7 +2545,7 @@ local function makeCompilerEnv(ast, scope, parent)
         ["get-scope"] = function() return macroCurrentScope end,
         ["in-scope?"] = function(symbol)
             return macroCurrentScope.manglings[tostring(symbol)]
-        end
+        end,
     }, { __index = _ENV or _G })
 end
 

@@ -39,7 +39,7 @@ Run fennel, a lisp programming language for the Lua runtime.
 
   If ~/.fennelrc exists, loads it before launching a repl.]]
 
-local options = {}
+local options = {plugins = {}}
 
 local function dosafe(filename, opts, args)
     local ok, val = xpcall(function()
@@ -105,6 +105,10 @@ for i=#arg, 1, -1 do
         table.remove(arg, i)
     elseif arg[i] == "--no-metadata" then
         options.useMetadata = false
+        table.remove(arg, i)
+    elseif arg[i] == "--compiler-plugin" then
+        local plugin = fennel.dofile(table.remove(arg, i+1), {env="COMPILER"})
+        table.insert(options.plugins, plugin)
         table.remove(arg, i)
     end
 end
