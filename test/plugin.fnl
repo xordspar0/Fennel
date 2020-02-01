@@ -1,0 +1,50 @@
+(local l (require :luaunit))
+(local fennel (require :fennel))
+(local view (require :fennelview))
+
+(fn test-plugin []
+  (var hook-count 0)
+
+  (fn test-destructure [from to]
+    (set hook-count (+ hook-count 1))
+    (l.assertEquals from 1)
+    (l.assertEquals (tostring to) "x")
+    (let [(from2 to2) (coroutine.yield)]
+      (l.assertEquals from2 2)
+      (l.assertEquals (tostring to2) "y"))
+    (let [(from3 to3 scope) (coroutine.yield)]
+      (l.assertEquals (view from3) "(fn [ a b ] 0)")
+      (l.assertEquals (view to3) "f")
+      (l.assertEquals scope.manglings {:x "x" :y "y"})))
+
+  (fn test-call [ast scope]
+    (set hook-count (+ hook-count 1))
+    (l.assertEquals (tostring ast) "(f 3 (+ x y))")
+    (l.assertEquals scope.manglings {:f "f" :x "x" :y "y"}))
+
+  (fn test-ste [symbol scope]
+    (set hook-count (+ hook-count 1))
+    (l.assertEquals (tostring symbol) "f")
+    (l.assertEquals scope.manglings {:f "f" :x "x" :y "y"})
+    (let [symbol2 (coroutine.yield)]
+      (l.assertEquals (tostring symbol2) "x"))
+    (let [symbol3 (coroutine.yield)]
+      (l.assertEquals (tostring symbol3) "y")))
+
+  (fn test-destructure2 [from to scope]
+    (set hook-count (+ hook-count 1))
+    (coroutine.yield)
+    (coroutine.yield))
+
+  (let [plugin1 {:destructure (coroutine.wrap test-destructure)
+                 :call (coroutine.wrap test-call)
+                 :symbol-to-expression (coroutine.wrap test-ste)}
+        plugin2 {:destructure (coroutine.wrap test-destructure2)}
+        code "(let [x 1 y 2 f (fn [a b] 0)] (f 3 (+ x y)))"]
+    (fennel.eval code {:plugins [plugin1 plugin2]})
+    (l.assertEquals hook-count 4 "Not all the plugins ran!")
+    (each [_ hook (pairs plugin1)]
+      (let [(ok? msg) (pcall hook)]
+        (l.assertStrContains msg "cannot resume dead coroutine")))))
+
+{: test-plugin}

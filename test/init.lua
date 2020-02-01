@@ -26,5 +26,6 @@ test("test.docstring")
 test("test.fennelview")
 test("test.failures")
 test("test.repl")
+test("test.plugin")
 
 os.exit(l.LuaUnit.result.notSuccessCount > 0 and 1 or 0)
