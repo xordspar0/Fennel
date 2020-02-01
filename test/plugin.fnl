@@ -47,4 +47,20 @@
       (let [(ok? msg) (pcall hook)]
         (l.assertStrContains msg "cannot resume dead coroutine")))))
 
+(fn test-unused-locals []
+  ;; copied from --check-unused-locals in the bin script
+  (let [unused-cases {"(fn [xx y] y)" "xx"
+                      "(fn [_x y z] y)" "z"
+                      "(let [x 1 y 2] y)" "x"}
+        hook (fennel.eval "(fn [ast scope]
+  (each [symname (pairs scope.symmeta)]
+    (assert-compile (or (. scope.symmeta symname :used)
+                        (symname:find \"^_\"))
+                    (: \"unused local %s\" :format symname) ast)))"
+                          {:env "COMPILER"})]
+    (each [code name (pairs unused-cases)]
+      (let [(ok? msg) (pcall fennel.eval code {:plugins [{:do hook :fn hook}]})]
+        (l.assertNot ok? "Should catch unused locals")
+        (l.assertStrContains (.. "unused local " name) msg)))))
+
 {: test-plugin}

@@ -86,7 +86,15 @@ for i=#arg, 1, -1 do
         options.correlate = true
         table.remove(arg, i)
     elseif arg[i] == "--check-unused-locals" then
-        options.checkUnusedLocals = true
+        -- this is tested in test/plugins.fnl; if you make changes here be
+        -- sure to update the hook there as well.
+        local hook = fennel.eval([====[(fn [ast scope]
+  (each [symname (pairs scope.symmeta)]
+    (assert-compile (or (. scope.symmeta symname :used)
+                        (symname:find "^_"))
+                    (: "unused local %s" :format symname) ast)))]====],
+            {env="COMPILER"})
+        table.insert(options.plugins, {["do"]=hook, fn=hook})
         table.remove(arg, i)
     elseif arg[i] == "--globals" then
         allowGlobals(table.remove(arg, i+1))
