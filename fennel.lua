@@ -735,6 +735,7 @@ end
 -- Convert symbol to Lua code. Will only work for local symbols
 -- if they have already been declared via declareLocal
 local function symbolToExpression(symbol, scope, isReference)
+    hook("symbol-to-expression", symbol, scope)
     local name = symbol[1]
     local multiSymParts = isMultiSym(name)
     if scope.hashfn then
@@ -757,7 +758,6 @@ local function symbolToExpression(symbol, scope, isReference)
     if not isLocal then
         rootScope.refedglobals[parts[1]] = true
     end
-    hook("symbol-to-expression", symbol, scope)
     return expr(combineParts(parts, scope), etype)
 end
 
