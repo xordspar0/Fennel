@@ -1,4 +1,4 @@
-local l = require("luaunit")
+local l = require("test.luaunit")
 local fennel = require("fennel")
 
 _G.tbl = {}
@@ -92,6 +92,14 @@ local function test_functions()
         ["(let [add (fn [x y] (+ x y)) inc (partial add 1)] (inc 99))"]=100,
         ["(let [add (fn [x y z] (+ x y z)) f2 (partial add 1 2)] (f2 6))"]=9,
         ["(let [add (fn [x y] (+ x y)) add2 (partial add)] (add2 99 2))"]=101,
+        -- pick-args
+        ["(let [f (fn [...] [...]) f-2 (pick-args 2 f)] (f-2 1 2 3))"]={1,2},
+        ["(let [f (fn [...] [...]) f-0 (pick-args 0 f)] (f-0 :foo))"]={},
+        ["((pick-args 5 (partial select :#)))"] = 5,
+        -- pick-values
+        ["[(pick-values 4 :a :b :c (values :d :e))]"]={'a','b','c','d'},
+        ["(let [f #(values :a :b :c)] [(pick-values 0 (f))])"]={},
+        ["(select :# (pick-values 3))"]=3,
         -- functions with empty bodies return nil
         ["(if (= nil ((fn [a]) 1)) :pass :fail)"]="pass",
         -- basic lambda
@@ -187,6 +195,8 @@ local function test_core()
         ["(do (var a nil) (var b nil) (local ret (fn [] a)) (set (a b) (values 4 5)) (ret))"]=4,
         -- Tset doesn't screw up with table literal
         ["(do (tset {} :a 1) 1)"]=1,
+        -- tset with let inside binds correctly
+        ["(let [t []] (tset t :a (let [{: a} {:a :bcd}] a)) t.a)"]="bcd",
         -- # is valid symbol constituent character
         ["(local x#x# 90) x#x#"]=90,
         -- : works on literal tables
@@ -284,6 +294,8 @@ local function test_loops()
           (each [_ x (values f s v)] (set t (+ t x))) t"]=6,
         ["(var t 0) (local (f s v) (pairs [1 2 3])) \
           (each [_ x (values f (doto s (table.remove 1)))] (set t (+ t x))) t"]=5,
+        ["(for [y 0 2] nil) (each [x (pairs [])] nil)\
+          (match [1 2] [x y] (+ x y))"]=3,
     }
     for code,expected in pairs(cases) do
         l.assertEquals(fennel.eval(code, {correlate=true}), expected, code)
@@ -330,12 +342,21 @@ local function test_macros()
         ["(-?> {:a {:b {:c :z}}} (. :a) (. :missing) (. :c))"]=nil,
         ["(-?>> :w (. {:w :x}) (. {:x :y}) (. {:y :z}))"]="z",
         ["(-?>> :w (. {:w :x}) (. {:x :missing}) (. {:y :z}))"]=nil,
+        ["(-?> [:a :b] (table.concat \" \"))"]="a b",
+        ["(-?>> \" \" (table.concat [:a :b]))"]="a b",
         -- just a boring old set+fn combo
-        ["(require-macros \"test-macros\")\
+        ["(require-macros \"test.macros\")\
           (defn1 hui [x y] (global z (+ x y))) (hui 8 4) z"]=12,
         -- macros with mangled names
-        ["(require-macros \"test-macros\")\
+        ["(require-macros \"test.macros\")\
           (->1 9 (+ 2) (* 11))"]=121,
+        -- import-macros targeting one name import and one aliased
+        ["(import-macros {:defn1 defn : ->1} :test.macros)\
+          (defn join [sep ...] (table.concat [...] sep))\
+          (join :: :num (->1 5 (* 2) (+ 8)))"]="num:18",
+        -- targeting a namespace AND an alias
+        ["(import-macros test :test.macros {:inc INC} :test.macros)\
+          (INC (test.inc 5))"]=7,
         -- special form
         [ [[(eval-compiler
              (tset _SPECIALS "reverse-it" (fn [ast scope parent opts]
@@ -353,11 +374,26 @@ local function test_macros()
         ["(macros {:plus (fn [x y] `(+ ,x ,y))}) (plus 9 9)"]=18,
         -- Vararg in quasiquote
         ["(macros {:x (fn [] `(fn [...] (+ 1 1)))}) ((x))"]=2,
+        -- macro expanding to macro
+        ["(macros {:when2 (fn [c val] `(when ,c ,val))})\
+          (when2 true :when2)"]="when2",
+        -- macro expanding to indirect macro
+        ["(macros {:when3 (fn [c val] `(do (when ,c ,val)))})\
+          (when3 true :when3)"]="when3",
         -- Threading macro with single function, with and without parens
         ["(-> 1234 (string.reverse) (string.upper))"]="4321",
         ["(-> 1234 string.reverse string.upper)"]="4321",
         -- Auto-gensym
         ["(macros {:m (fn [y] `(let [xa# 1] (+ xa# ,y)))}) (m 4)"]=5,
+        -- macro expanding to primitives
+        ["(macro five [] 5) (five)"] = 5,
+        ["(macro greet [] :Hi!) (greet)"] = "Hi!",
+        ["(macros {:yes (fn [] true) :no (fn [] false)}) [(yes) (no)]"]={true, false},
+        -- Side-effecting macros
+        ["(macros {:m (fn [x] (set _G.sided x))}) (m 952) _G.sided"]=952,
+        -- Macros returning nil in unquote
+        ["(import-macros m :test.macros) (var x 1) (m.inc! x 2) (m.inc! x) x"]=4,
+        ["(macro seq? [expr] (sequence? expr)) (seq? [65])"]={65},
     }
     for code,expected in pairs(cases) do
         l.assertEquals(fennel.eval(code, {correlate=true}), expected, code)
@@ -483,16 +519,18 @@ local function test_fennelview()
     local cases = { -- generative fennelview tests are also below
         ["((require :fennelview) {:a 1 :b 52})"]="{\n  :a 1\n  :b 52\n}",
         ["((require :fennelview) {:a 1 :b 5} {:one-line true})"]="{:a 1 :b 5}",
-        ["((require :fennelview) (let [t {}] [t t]))"]="[ {} #<table 2> ]",
+        ["((require :fennelview) (let [t {}] [t t]))"]="[{} #<table 2>]",
         ["((require :fennelview) (let [t {}] [t t]) {:detect-cycles? false})"]=
-            "[ {} {} ]",
+            "[{} {}]",
         -- ensure fennelview works on lists and syms
         ["(eval-compiler (set _G.out ((require :fennelview) '(a {} [1 2])))) _G.out"]=
-            "(a {} [ 1 2 ])",
+            "(a {} [1 2])",
     }
     for code,expected in pairs(cases) do
         l.assertEquals(fennel.eval(code, {correlate=true}), expected, code)
     end
+    local mt = setmetatable({}, {__fennelview=function() return "META" end})
+    l.assertEquals(require("fennelview")(mt), "META")
 end
 
 return {

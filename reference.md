@@ -9,7 +9,8 @@ Everything Fennel does happens at compile-time, so you will need to
 familiarize yourself with Lua's standard library functions. Thankfully
 it's much smaller than almost any other language.
 
-Fennel source code should be UTF-8-encoded text.
+Fennel source code should be UTF-8-encoded text, although currently
+only ASCII forms of whitespace and numerals are supported.
 
 ## Functions
 
@@ -23,7 +24,8 @@ cover the declared ones, the remaining ones are `nil`.
 Example:
 
 ```fennel
-(fn pxy [x y] (print (+ x y)))
+(fn pxy [x y]
+  (print (+ x y)))
 ```
 
 
@@ -41,7 +43,8 @@ any of the listed arguments are nil, unless its identifier begins with `?`.
 Example:
 
 ```fennel
-(lambda [x ?y z] (print (- x (* (or ?y 1) z))))
+(lambda [x ?y z]
+  (print (- x (* (or ?y 1) z))))
 ```
 
 
@@ -55,7 +58,10 @@ Both the `fn` and `lambda`/`λ` forms of function definition accept an optional
 docstring.
 
 ```fennel
-(fn pxy [x y] "Print the sum of x and y" (print (+ x y)))
+(fn pxy [x y]
+  "Print the sum of x and y"
+  (print (+ x y)))
+
 (λ pxyz [x ?y z]
   "Print the sum of x, y, and z. If y is not provided, defaults to 0."
   (print (+ x (or ?y 0) z)))
@@ -106,8 +112,8 @@ arguments, each named `$1` through `$9`. A lone `$` in a hash function
 is treated as an alias for `$1`.
 
 Hash functions are defined with the `hashfn` macro, which wraps
-it's single argument in a function literal. For example, `#$3`
-is a function that returns it's third argument. `#[$1 $2 $3]` is
+its single argument in a function literal. For example, `#$3`
+is a function that returns its third argument. `#[$1 $2 $3]` is
 a function that returns a table from the first 3 arguments. And
 so on.
 
@@ -128,9 +134,64 @@ Example:
 (partial (fn [x y] (print (+ x y))) 2)
 ```
 
-
 This example returns a function which will print a number that is 2
 greater than the argument it is passed.
+
+### `pick-values` emit exactly n values
+
+*(Since 0.4.0)*
+
+Discard all values after the first n when dealing with multi-values (`...`)
+and multiple returns. Useful for composing functions that return multiple values
+with variadic functions. Expands to a `let` expression that binds and re-emits
+exactly n values, e.g.
+
+```fennel
+(pick-values 2 (func))
+```
+expands to
+```fennel
+(let [(_0_ _1_) (func)] (values _0_ _1_))
+```
+
+Example:
+
+```fennel
+(pick-values 0 :a :b :c :d :e) ; => nil
+[(pick-values 2 (table.unpack [:a :b :c]))] ;-> ["a" "b"]
+
+(fn add [x y ...] (let [sum (+ (or x 0) (or y 0))]
+                        (if (= (select :# ...) 0) sum (add sum ...))))
+
+(add (pick-values 2 10 10 10 10)) ; => 20
+(->> [1 2 3 4 5] (table.unpack) (pick-values 3) (add)) ; => 6
+```
+
+**Note:** If n is greater than the number of values supplied, n values will still be emitted.
+This is reflected when using `(select "#" ...)` to count varargs, but tables `[...]`
+ignore trailing nils:
+
+```fennel
+(select :# (pick-values 5 "one" "two")) ; => 5
+[(pick-values 5 "one" "two")]           ; => ["one" "two"]
+```
+
+### `pick-args` create a function of fixed arity
+
+*(Since 0.4.0)*
+
+Like `pick-values`, but takes an integer `n` and a function/operator
+`f`, and creates a new function that applies exactly `n` arguments to `f`.
+
+Example, using the `add` function created above:
+
+```
+(pick-args 2 add) ; expands to `(fn [_0_ _1_] (add _0_ _1_))`
+(-> [1 2 3 4 5] (table.unpack) ((pick-args 3 add))) ; => 6
+
+(local count-args (partial select "#"))
+((pick-args 3 count-args) "still three args, but 2nd and 3rd are nil") ; => 3
+```
 
 ## Binding
 
@@ -141,7 +202,8 @@ Introduces a new scope in which a given set of local bindings are used.
 Example:
 
 ```fennel
-(let [x 89] (print (+ x 12)) ; => 101
+(let [x 89]
+  (print (+ x 12)) ; => 101
 ```
 
 These locals cannot be changed with `set` but they can be shadowed by
@@ -154,23 +216,33 @@ table or a function call which returns multiple values:
 Example:
 
 ```fennel
-(let [[a b c] [1 2 3]] (+ a b c)) ; => 6
+(let [(x y z) (unpack [10 9 8])]
+  (+ x y z)) ; => 27
 ```
-
 
 Example:
 
 ```fennel
-(let [(x y z) (unpack [10 9 8])] (+ x y z)) ; => 27
+(let [{:msg message : val} (returns-a-table)]
+  (print message) val)
 ```
-
 
 Example:
 
 ```fennel
-(let [{:msg message : val} (returns-a-table)] (print message) val)
+(let [[a b c] [1 2 3]]
+  (+ a b c)) ; => 6
 ```
 
+When binding to a sequential table, you can capture all the remainder
+of the table in a local by using `&`:
+
+Example:
+
+```fennel
+(let [[a b & c] [1 2 3 4 5 6]]
+  (table.concat c ",")) ; => "3,4,5,6"
+```
 
 ### `local` declare local
 
@@ -184,10 +256,11 @@ Example:
 (local tau-approx 6.28318)
 ```
 
-
 Supports destructuring and multiple-value binding.
 
 ### `match` pattern matching
+
+*(Since 0.2.0)*
 
 Evaluates its first argument, then searches thru the subsequent
 pattern/body clauses to find one where the pattern matches the value,
@@ -214,13 +287,14 @@ first element; if so then it will add up the second and third elements.
 Patterns can be tables, literal values, or symbols. If a symbol has
 already been bound, then the value is checked against the existing
 local's value, but if it's a new local then the symbol is bound to the
-value. 
+value.
 
 Tables can be nested, and they may be either sequential (`[]` style)
 or key/value (`{}` style) tables. Sequential tables will match if they
 have at least as many elements as the pattern. (To allow an element to
 be nil, use a symbol like `?this`.) Tables will never fail to match
-due to having too many elements.
+due to having too many elements. You can use `&` to  capture all the
+remaining elements of a sequential table, just like `let`.
 
 ```fennel
 (match mytable
@@ -318,7 +392,8 @@ Example:
 Example:
 
 ```fennel
-(let [t {:a 4 :b 8}] (set t.a 2) t) ; => {:a 2 :b 8}
+(let [t {:a 4 :b 8}]
+  (set t.a 2) t) ; => {:a 2 :b 8}
 ```
 
 
@@ -333,7 +408,8 @@ with `local` and `let`.
 Example:
 
 ```fennel
-(let [tbl {:d 32} field :d] (tset tbl field 19) tbl) ; => {:d 19}
+(let [tbl {:d 32} field :d]
+  (tset tbl field 19) tbl) ; => {:d 19}
 ```
 
 
@@ -348,13 +424,15 @@ value.
 Example:
 
 ```fennel
-(let [x (values 1 2 3)] x) ; => 1
+(let [x (values 1 2 3)]
+  x) ; => 1
 ```
 
 Example:
 
 ```fennel
-(let [(file-handle message code) (io.open "foo.blah")] message) ; => "foo.blah: No such file or directory"
+(let [(file-handle message code) (io.open "foo.blah")]
+  message) ; => "foo.blah: No such file or directory"
 ```
 
 Example:
@@ -366,7 +444,7 @@ Example:
 Example:
 
 ```fennel
-(do (local (_ _ z) (unpack [:a :b :c :d :e])), z)  => c
+(do (local (_ _ z) (unpack [:a :b :c :d :e])) z)  => c
 ```
 
 ## Flow Control
@@ -456,13 +534,14 @@ this `begin` or `progn`.
 
 ### operators
 
-* `and`, `or`, `not` boolean
-* `+`, `-`, `*`, `/`, `//`, `%`, `^` arithmetic
-* `>`, `<`, `>=`, `<=`, `=`, `not=` comparison
+* `and`, `or`, `not`: boolean
+* `+`, `-`, `*`, `/`, `//`, `%`, `^`: arithmetic
+* `>`, `<`, `>=`, `<=`, `=`, `not=`: comparison
+* `lshift`, `rshift`, `band`, `bor`, `bxor`, `bnot`: bitwise operations
 
-These all work as you would expect, with a few caveats.
-`//` for integer division is
-only available in Lua 5.3 and onward.
+These all work as you would expect, with a few caveats.  `//` for
+integer division and the bitwise operators are only available in Lua
+5.3 and onward.
 
 They all take any number of arguments, as long as that number is fixed
 at compile-time. For instance, `(= 2 2 (unpack [2 5]))` will evaluate
@@ -488,7 +567,7 @@ Example:
 *(Changed in 0.3.0: the function was called `#` before.)*
 
 Returns the length of a string or table. Note that the length of a
-table with gaps in it is undefined; it can return a number
+table with gaps (nils) in it is undefined; it can return a number
 corresponding to any of the table's "boundary" positions between nil
 and non-nil values. If a table has nils and you want to know the last
 consecutive numeric index starting at 1, you must calculate it
@@ -521,8 +600,8 @@ Example:
 ```
 
 
-Note that if the field name is known at compile time, you don't need
-this and can just use `mytbl.field`.
+Note that if the field name is a string known at compile time, you
+don't need this and can just use `mytbl.field`.
 
 ### `:` method call
 
@@ -644,7 +723,7 @@ same thing in rather than using the value from the previous form for
 the next form.
 
 ```fennel
-(doto (io.open "/tmp/err.log)
+(doto (io.open "/tmp/err.log")
   (: :write contents)
   (: :close))
 
@@ -658,15 +737,42 @@ the next form.
 The first form becomes the return value for the whole expression, and
 subsequent forms are evaluated solely for side-effects.
 
-### `require-macros`
+### `include`
 
-Requires a module at compile-time and binds its fields locally as macros.
+*(since 0.3.0)*
 
-Macros currently must be defined in separate modules. A macro module
-exports any number of functions which take code forms as arguments at
-compile time and emit lists which are fed back into the compiler. For
-instance, here is a macro function which implements `when2` in terms of
-`if` and `do`:
+```fennel
+(include :my.embedded.module)
+```
+Load Fennel/Lua module code at compile time and embed it, along with any modules *it*
+requires, etc., in the compiled output. The module name must be a string literal
+that can resolve to a module during compilation. The bundled code will be wrapped
+in a function invocation in the emitted Lua.
+
+See also: the `requireAsInclude` option in the API documentation and the `--require-as-include`
+CLI flag (`fennel --help`)
+
+## Macros
+
+Note that the macro interface is still preliminary and is subject to
+change over time.
+
+All forms which introduce macros do so inside the current scope. This
+is usually the top level for a given file, but you can introduce
+macros into smaller scopes as well.
+
+### `import-macros` load macros from a separate module
+
+*(Since 0.4.0)*
+
+*Experimental*: subject to change in future releases.
+
+Loads a module at compile-time and binds its fields as local macros.
+
+A macro module exports any number of functions which take code forms
+as arguments at compile time and emit lists which are fed back into
+the compiler. For instance, here is a macro function which implements
+`when2` in terms of `if` and `do`:
 
 ```fennel
 (fn when2 [condition body1 ...]
@@ -686,7 +792,7 @@ in 0.3.0: `@` was used instead of `,` before.)*
 Assuming the code above is in the file "my-macros.fnl" then it turns this input:
 
 ```fennel
-(require-macros :my-macros)
+(import-macros {: when2} :my-macros)
 
 (when2 (= 3 (+ 2 a))
   (print "yes")
@@ -703,21 +809,37 @@ into the backtick template:
     (finish-calculation)))
 ```
 
+The `import-macros` macro can take any number of binding/module-name
+pairs. It can also bind the entire macro module to a single name
+rather than destructuring it. In this case you can use a dot to call
+the individual macros inside the module:
+
+```fennel
+(import-macros mine :my-macros)
+
+(mine.when2 (= 3 (+ 2 a))
+  (print "yes")
+  (finish-calculation))
+```
+
 See "Compiler API" below for details about additional functions visible
 inside compiler scope which macros run in.
 
-Note that the macro interface is still preliminary and is subject to
-change over time.
+### `require-macros` load macros with less flexibility
 
-### `macros`
+The `require-macros` form is like `import-macros`, except it does not
+give you any control over the naming of the macros being
+imported. Consider using `import-macros` instead of `require-macros`.
+
+### `macros` define several macros
 
 *(Since 0.3.0)*
 
-Defines a table of macros local to the current fennel file. Note that
-inside the macro definitions, you cannot access variables and bindings
-from the surrounding code. The macros are essentially compiled in their
-own compiler environment. Again, see the "Compiler API" section for
-more details about the macro interface.
+Defines a table of macros. Note that inside the macro definitions, you
+cannot access variables and bindings from the surrounding code. The
+macros are essentially compiled in their own compiler
+environment. Again, see the "Compiler API" section for more details
+about the functions available here.
 
 ```fennel
 (macros {:my-max (fn [x y]
@@ -727,6 +849,41 @@ more details about the macro interface.
 (print (my-max 10 20))
 (print (my-max 20 10))
 (print (my-max 20 20))
+```
+
+### `macro` define a single macro
+
+```fennel
+(macro my-max [x y]
+  `(let [x# ,x y# ,y]
+     (if (< x# y#) y# x#)))
+```
+
+If you are only defining a single macro, this is equivalent to the
+previous example. The syntax mimics `fn`.
+
+### `macrodebug` print the expansion of a macro
+
+```fennel
+(macrodebug (-> abc
+                (+ 99)
+                (> 0)
+                (when (os.exit))))
+; -> (if (> (+ abc 99) 0) (do (os.exit)))
+```
+
+Call the `macrodebug` macro with a form and it will repeatedly expand
+top-level macros in that form and print out the resulting form. Note
+that the resulting form will usually not be sensibly indented, so you
+might need to copy it and reformat it into something more readable.
+
+It will attempt to load the `fennelview` module to pretty-print the
+results but will fall back to `tostring` if that isn't found. If you
+have moved the `fennelview` module to another location, try setting it
+in `package.loaded` to make it available here:
+
+```fennel
+(set package.loaded (require :lib.newlocation.fennelview))
 ```
 
 ### Macro gotchas
@@ -762,7 +919,7 @@ guarantees the local name is unique.
 `macros` is useful for one-off, quick macros, or even some more complicated
 macros, but be careful. It may be tempting to try and use some function
 you have previously defined,  but if you need such functionality, you
-should probably use `require-macros`.
+should probably use `import-macros`.
 
 For example, this will not compile in strict mode! Even when it does
 allow the macro to be called, it will fail trying to call a global
@@ -778,21 +935,6 @@ allow the macro to be called, it will fail trying to call a global
 ; Compile error in 'my-max': attempt to call global '__fnl_global__my_2dfn' (a nil value)
 ```
 
-### `include`
-
-*(since 0.3.0)*
-
-```fennel
-(include :my.embedded.module)
-```
-Load Fennel/Lua module code at compile time and embed it, along with any modules *it*
-requires, etc., in the compiled output. The module name must be a string literal
-that can resolve to a module during compilation. The bundled code will be wrapped
-in a function invocation in the emitted Lua.
-
-See also: the `requireAsInclude` option in the API documentation and the `--require-as-include`
-CLI flag (`fennel --help`)
-
 ### `eval-compiler`
 
 Evaluate a block of code during compile-time with access to compiler
@@ -803,13 +945,16 @@ Example:
 
 ```fennel
 (eval-compiler
-  (tset _SPECIALS "local" (. _SPECIALS "global")))
+  (each [name (pairs _G)]
+    (print name)))
 ```
+
+This prints all the functions available in compiler scope.
 
 ### Compiler API
 
 Inside `eval-compiler`, `macros`, or `macro` blocks, as well as
-`require-macros` modules, these functions are visible to your code.
+`import-macros` modules, these functions are visible to your code.
 
 Note that lists are compile-time concepts that don't exist at runtime; they
 are implemented as regular tables which have a special metatable to
@@ -828,7 +973,12 @@ and a metatable that the compiler uses to distinguish them. You can use
 * `gensym` - generates a unique symbol for use in macros.
 * `varg?` - is this a `...` symbol which indicates var args?
 * `multi-sym?` - a multi-sym is a dotted symbol which refers to a table's field
-* `in-scope?` - does this symbol refer to a local in the current scope?
+
+These functions can be used from within macros only, not from any
+`eval-compiler` call:
+
+* `in-scope?` - does this symbol refer to an in-scope local?
+* `macroexpand` - performs macroexpansion on its argument form; returns an AST
 
 Note that other internals of the compiler exposed in compiler scope are
 subject to change.

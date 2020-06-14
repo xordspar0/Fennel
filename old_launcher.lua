@@ -1,5 +1,10 @@
 #!/usr/bin/env lua
 
+-- This is the old version of the launcher wrapper script; we keep it around
+-- for bootstraping purposes to avoid chicken/egg problems using launcher.fnl
+-- to compile Fennel itself. In general there is no need to keep this file in
+-- sync with launcher.fnl; changes for new features should just go there.
+
 local fennel_dir = arg[0]:match("(.-)[^\\/]+$")
 package.path = fennel_dir .. "?.lua;" .. package.path
 local fennel = require('fennel')
@@ -129,11 +134,13 @@ end
 
 -- Try to load readline library
 local function tryReadline(opts)
-    local ok, readline = pcall(require, "readline")
-    if ok then
+    local readline_ok, readline = pcall(require, "readline")
+    if readline_ok then
+        if readline.set_readline_name then -- added as of readline.lua 2.6-0
+            readline.set_readline_name('fennel')
+        end
         readline.set_options({
-            keeplines = 1000
-        })
+            keeplines = 1000, histfile = '', })
         function opts.readChunk(parserState)
             local prompt = parserState.stackSize > 0 and '.. ' or '>> '
             local str = readline.readline(prompt)
@@ -157,7 +164,15 @@ local function tryReadline(opts)
           end
         end
         readline.set_complete_function(replCompleter)
+        return readline
       end
+end
+
+-- TODO: generalize this instead of hardcoding it
+local fok, friendly = pcall(fennel.dofile, fennel_dir .. "fennelfriend.fnl", options)
+if fok then
+    options["assert-compile"] = friendly["assert-compile"]
+    options["parse-error"] = friendly["parse-error"]
 end
 
 if arg[1] == "--repl" or #arg == 0 then
@@ -171,7 +186,7 @@ if arg[1] == "--repl" or #arg == 0 then
         end
     end
 
-    tryReadline(options)
+    local readline = tryReadline(options)
 
     if options.fennelrc ~= false then
         local home = os.getenv("HOME")
@@ -195,6 +210,8 @@ if arg[1] == "--repl" or #arg == 0 then
         print("Use (doc something) to view documentation.")
     end
     fennel.repl(options)
+    -- if readline loaded, persist history (noop if histfile == '')
+    if readline then readline.save_history() end
 elseif arg[1] == "--compile" then
     for i = 2, #arg do
         local f = arg[i] == "-" and io.stdin or assert(io.open(arg[i], "rb"))

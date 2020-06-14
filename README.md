@@ -8,9 +8,13 @@ expressive, and has almost zero overhead compared to handwritten Lua.
 * *Compile-time macros* - Ship compiled code with no runtime dependency on Fennel.
 * *Embeddable* - Fennel is a one-file library as well as an executable. Embed it in other programs to support runtime extensibility and interactive development.
 
+At [https://fennel-lang.org][1] there's a live in-browser repl you can
+use without installing anything.
+
 ## Documentation
 
-* The [tutorial](tutorial.md) is a great place to start
+* The [setup](setup.md) guide is a great place to start
+* The [tutorial](tutorial.md) teaches the basics of the language
 * The [reference](reference.md) describes all Fennel special forms
 * The [API listing](api.md) shows how to integrate Fennel into your codebase
 * The [Lua primer](lua-primer.md) gives a very brief intro to Lua with
@@ -40,19 +44,23 @@ each release.
 (print (fib 10))
 ```
 
-## Usage
+## Building Fennel from source
 
-At [https://fennel-lang.org][1] there's a live in-browser repl you can
-use without installing anything.
+Building Fennel from source allows you to use versions of Fennel that
+haven't been released, and makes contributing to Fennel easier.
 
-Check your OS's package manager to see if Fennel is available
-there. If you use [LuaRocks][3] you can run `luarocks install fennel`.
+### To build Fennel from source
 
-Otherwise clone this repository, and run `./fennel` to start a
-repl. Use `./fennel my-file.fnl` to run code or `./fennel --compile
-my-file.fnl > my-file.lua` to perform ahead-of-time compilation.
+1. `cd` to a directory in which you want to download Fennel, such as
+   `~/src`
+2. Run `git clone https://github.com/bakpakin/Fennel`
+3. Run `cd Fennel`
+4. Run `make fennel` to create a standalone script called `fennel`
+5. Copy or link the `fennel` script to a directory on your `$PATH`, such as `/usr/local/bin`
 
-See the [API documentation](api.md) for how to embed Fennel in your program.
+**Note**: If you copied the `fennel` script to one of the
+directories on your `$PATH`, then you can run `fennel filename.fnl` to
+run a Fennel file anywhere on your system.
 
 ## Differences from Lua
 
@@ -63,6 +71,7 @@ See the [API documentation](api.md) for how to embed Fennel in your program.
 * Separate looping constructs for numeric loops vs iterators instead of overloading `for`
 * Opt-in mutability for local variables
 * Opt-in arity checks for `lambda` functions
+* Pattern matching
 * Ability to extend the syntax with your own macros and special forms
 
 ## Differences from other lisp languages
@@ -91,32 +100,25 @@ be a good fit when end-users are expected to write their own code to
 extend the program, because the available documentation for learning
 Lua is much more readily-available than it is for Fennel.
 
-Editor support is currently somewhat limited outside Emacs/Vim, but
-unsupported editors can be used with syntax highlighting for Clojure
-reasonably well.
-
 ## Resources
 
-* [Mailing list][5]
-* [Emacs support][6]
-* [Vim support][10]
-* [Wiki][7]
+* Join the `#fennel` chat [thru IRC on Freenode][9] or [on Matrix][11]
+* The [mailing list][5] has slower-paced discussion and announcements
+* You can browse and edit [the Wiki][7]
 * Build: [![CircleCI](https://circleci.com/gh/bakpakin/Fennel.svg?style=svg)][8]
-* The `#fennel` IRC channel is [on Freenode][9]
 
 ## License
 
-Copyright © 2016-2019 Calvin Rose and contributors
+Copyright © 2016-2020 Calvin Rose and contributors
 
-Released under the MIT license
+Released under the [MIT license](LICENSE).
 
 [1]: https://fennel-lang.org
 [2]: https://p.hagelb.org/pong.fnl.html
 [3]: https://luarocks.org/
 [4]: http://luajit.org/ext_ffi_tutorial.html
 [5]: https://lists.sr.ht/%7Etechnomancy/fennel
-[6]: https://gitlab.com/technomancy/fennel-mode
 [7]: https://github.com/bakpakin/Fennel/wiki
 [8]: https://circleci.com/gh/bakpakin/Fennel
 [9]: https://webchat.freenode.net/
-[10]: https://github.com/bakpakin/fennel.vim
+[11]: https://matrix.to/#/!rnpLWzzTijEUDhhtjW:matrix.org?via=matrix.org

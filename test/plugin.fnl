@@ -1,4 +1,4 @@
-(local l (require :luaunit))
+(local l (require :test.luaunit))
 (local fennel (require :fennel))
 (local view (require :fennelview))
 
@@ -13,7 +13,7 @@
       (l.assertEquals from2 2)
       (l.assertEquals (tostring to2) "y"))
     (let [(from3 to3 scope) (coroutine.yield)]
-      (l.assertEquals (view from3) "(fn [ a b ] 0)")
+      (l.assertEquals (view from3) "(fn [a b] 0)")
       (l.assertEquals (view to3) "f")
       (l.assertEquals scope.manglings {:x "x" :y "y"})))
 
