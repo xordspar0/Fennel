@@ -973,6 +973,7 @@ and a metatable that the compiler uses to distinguish them. You can use
 * `gensym` - generates a unique symbol for use in macros.
 * `varg?` - is this a `...` symbol which indicates var args?
 * `multi-sym?` - a multi-sym is a dotted symbol which refers to a table's field
+* `assert-compile` - like `assert` but takes ast as its 3rd arg for better messages
 
 These functions can be used from within macros only, not from any
 `eval-compiler` call:

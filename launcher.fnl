@@ -37,7 +37,7 @@ Run fennel, a lisp programming language for the Lua runtime.
 
   If ~/.fennelrc exists, loads it before launching a repl.")
 
-(local options [])
+(local options {:plugins []})
 
 (fn dosafely [f ...]
   (let [args [...]
@@ -56,6 +56,14 @@ Run fennel, a lisp programming language for the Lua runtime.
   (let [file (table.remove arg (+ i 1))]
     (dosafely fennel.dofile file options [])
     (table.remove arg i)))
+
+;; TODO: move this to a separate plugin in 1.0?
+(local unused-locals-plugin (-> "
+(fn [ast scope]
+  (each [symname (pairs scope.symmeta)]
+    (assert-compile (or (. scope.symmeta symname :used) (symname:find \"^_\"))
+                    (: \"unused local %s\" :format symname) ast)))"
+  (fennel.eval {:env "COMPILER"})))
 
 (for [i (# arg) 1 -1]
   (match (. arg i)
@@ -77,8 +85,14 @@ Run fennel, a lisp programming language for the Lua runtime.
                         (table.remove arg i))
     "--correlate" (do (set options.correlate true)
                       (table.remove arg i))
-    "--check-unused-locals" (do (set options.checkUnusedLocals true)
+    "--check-unused-locals" (do (table.insert options.plugins
+                                              {:do unused-locals-plugin
+                                               :fn unused-locals-plugin})
                                 (table.remove arg i))
+    "--compiler-plugin" (let [path (table.remove arg (+ i 1))]
+                          (table.insert options.plugins
+                                        (fennel.dofile path {:env "COMPILER"}))
+                          (table.remove arg i))
     "--globals" (do (allow-globals (table.remove arg (+ i 1)))
                     (each [global-name (pairs _G)]
                       (table.insert options.allowedGlobals global-name))
