@@ -85,7 +85,7 @@
 (fn test-suggestions []
   (let [friend (require :fennelfriend)
         (_ msg) (pcall fennel.dofile "test/bad/set-local.fnl"
-                       {:assert-compile friend.assert-compile})]
+                       {:plugins [(require :fennelfriend)]})]
     ;; show the raw error message
     (l.assertStrContains msg "expected var x")
     ;; offer suggestions

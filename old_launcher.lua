@@ -44,7 +44,7 @@ Run fennel, a lisp programming language for the Lua runtime.
 
   If ~/.fennelrc exists, loads it before launching a repl.]]
 
-local options = {plugins = {}}
+local options = {plugins = {fennel.dofile("fennelfriend.fnl")}}
 
 local function dosafe(filename, opts, args)
     local ok, val = xpcall(function()
@@ -166,13 +166,6 @@ local function tryReadline(opts)
         readline.set_complete_function(replCompleter)
         return readline
       end
-end
-
--- TODO: generalize this instead of hardcoding it
-local fok, friendly = pcall(fennel.dofile, fennel_dir .. "fennelfriend.fnl", options)
-if fok then
-    options["assert-compile"] = friendly["assert-compile"]
-    options["parse-error"] = friendly["parse-error"]
 end
 
 if arg[1] == "--repl" or #arg == 0 then

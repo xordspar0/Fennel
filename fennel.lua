@@ -309,12 +309,28 @@ local function propagateOptions(options, subopts)
     return subopts
 end
 
+-- Run all the hook functions for an event from plugins.
+local function hook(event, ...)
+    local plugins = rootOptions and rootOptions.plugins or {}
+    -- Compiler errors have to reset the rootOptions because they are an exit
+    -- point of the compiler. Ideally we would do this inside assertCompile,
+    -- but the rootOptions are needed here to look up the plugins. When this
+    -- function is called on the "assert-compile" event and the condition is
+    -- false, then we need to reset the root rather than relying on the plugin
+    -- doing it for us, because it's error-prone and easy to forget.
+    if(event == "assert-compile" and not ... and resetRoot) then resetRoot() end
+
+    for _, plugin in ipairs(plugins) do
+        if plugin[event] then plugin[event](...) end
+    end
+end
+
 -- Parse one value given a function that
 -- returns sequential bytes. Will throw an error as soon
 -- as possible without getting more bytes on bad input. Returns
 -- if a value was read, and then the value read. Will return nil
 -- when input stream is finished.
-local function parser(getbyte, filename, options)
+local function parser(getbyte, filename)
 
     -- Stack of unfinished values
     local stack = {}
@@ -346,9 +362,8 @@ local function parser(getbyte, filename, options)
     local function parseError(msg)
         local source = rootOptions and rootOptions.source
         if resetRoot then resetRoot() end
-        local override = options and options["parse-error"]
-        if override then override(msg, filename or "unknown", line or "?",
-                                  byteindex, source) end
+        hook("parse-error", msg, filename or "unknown", line or "?",
+             byteindex, source)
         return error(("Parse error in %s:%s: %s"):
                 format(filename or "unknown", line or "?", msg), 0)
     end
@@ -602,28 +617,14 @@ local function makeScope(parent)
     }
 end
 
-local function hook(event, ...)
-    for _, plugin in ipairs(rootOptions.plugins or {}) do
-        if plugin[event] then plugin[event](...) end
-    end
-end
-
 -- Assert a condition and raise a compile error with line numbers. The ast arg
 -- should be unmodified so that its first element is the form being called.
 -- If you add new calls to this function, please update fenneldfriend.fnl
 -- as well to add suggestions for how to fix the new error.
 local function assertCompile(condition, msg, ast)
-    local override = rootOptions and rootOptions["assert-compile"]
-    if override then
-        local source = rootOptions and rootOptions.source
-        -- don't make custom handlers deal with resetting root; it's error-prone
-        if not condition and resetRoot then resetRoot() end
-        override(condition, msg, ast, source)
-        -- should we fall thru to the default check, or should we allow the
-        -- override to swallow the error?
-    end
+    local source = rootOptions and rootOptions.source
+    hook("assert-compile", condition, msg, ast, source)
     if not condition then
-        if resetRoot then resetRoot() end
         local m = getmetatable(ast)
         local filename = m and m.filename or ast.filename or "unknown"
         local line = m and m.line or ast.line or "?"
@@ -1192,6 +1193,7 @@ local function compile1(ast, scope, parent, opts)
             for i = 2, len do
                 newAST[#newAST + 1] = ast[i]
             end
+            hook("call", ast, scope)
             local compiled = compile1(newAST, scope, parent, opts)
             exprs = compiled
         else -- Function call
@@ -2615,8 +2617,7 @@ local replsource = [===[(local (fennel internals) ...)
                                               :scope scope
                                               :useMetadata opts.useMetadata
                                               :moduleName opts.moduleName
-                                              :assert-compile opts.assert-compile
-                                              :parse-error opts.parse-error})
+                                              :plugins opts.plugins})
                 (false msg) (do (clear-stream)
                                 (on-error "Compile" msg))
                 (true source) (let [source (if save-locals?

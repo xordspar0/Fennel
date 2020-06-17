@@ -37,7 +37,7 @@ Run fennel, a lisp programming language for the Lua runtime.
 
   If ~/.fennelrc exists, loads it before launching a repl.")
 
-(local options {:plugins []})
+(local options {:plugins [(require :fennelfriend)]})
 
 (fn dosafely [f ...]
   (let [args [...]
@@ -132,10 +132,6 @@ Run fennel, a lisp programming language for the Lua runtime.
           []))
     (readline.set_complete_function repl-completer)
     readline))
-
-;; TODO: generalize this as a plugin instead of hard-coding it
-(each [k v (pairs (require :fennelfriend))]
-  (tset options k v))
 
 (fn load-initfile []
   (let [home (or (os.getenv "HOME") "/")
