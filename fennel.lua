@@ -2703,7 +2703,16 @@ module.doc = doc
 module.searcher = module.makeSearcher()
 module.make_searcher = module.makeSearcher -- oops backwards compatibility
 
-local function makeCompilerEnv(ast, scope, parent)
+local safeEnv = {
+    assert = assert, error=error, pcall=pcall, xpcall=xpcall, select=select,
+    tonumber=tonumber, tostring=tostring, type=type, unpack=unpack, math=math,
+    coroutine=coroutine, table=table, string=string, pairs=pairs, ipairs=ipairs,
+    next=next, getmetatable=getmetatable, setmetatable=setmetatable,
+    require=require }
+safeEnv._G = safeEnv
+
+local function makeCompilerEnv(ast, scope, parent, unsafe)
+    local env = unsafe and (_ENV or _G) or safeEnv
     return setmetatable({
         -- State of compiler if needed
         _SCOPE = scope,
@@ -2736,7 +2745,7 @@ local function makeCompilerEnv(ast, scope, parent)
             assertCompile(macroCurrentScope, "must call from macro", ast)
             return macroexpand(form, macroCurrentScope)
         end,
-    }, { __index = _ENV or _G })
+    }, { __index = env })
 end
 
 local function macroGlobals(env, globals)
