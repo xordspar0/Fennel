@@ -70,6 +70,13 @@ local function kvmap(t, f, out)
     return out
 end
 
+-- Returns a shallow copy of its table argument. Returns an empty table on nil.
+local function copy(from)
+   local to = {}
+   for k, v in pairs(from or {}) do to[k] = v end
+   return to
+end
+
 local function allPairs(t)
     assert(type(t) == 'table', 'allPairs expects a table')
     local seen = {}
@@ -109,18 +116,6 @@ local VARARG = setmetatable({ '...' },
     { 'VARARG', __tostring = deref, __fennelview = deref })
 local LIST_MT = { 'LIST', __tostring = listToString, __fennelview = listToString }
 local SEQUENCE_MARKER = { 'SEQUENCE' }
-
--- Load code with an environment in all recent Lua versions
-local function loadCode(code, environment, filename)
-    environment = environment or _ENV or _G
-    if setfenv and loadstring then
-        local f = assert(loadstring(code, filename))
-        setfenv(f, environment)
-        return f
-    else
-        return assert(load(code, filename, "t", environment))
-    end
-end
 
 -- Safely load an environment variable
 local getenv = os and os.getenv or function() return nil end
@@ -202,13 +197,6 @@ end
 local function isSequence(x)
     local mt = type(x) == "table" and getmetatable(x)
     return mt and mt.sequence == SEQUENCE_MARKER and x
-end
-
--- Returns a shallow copy of its table argument. Returns an empty table on nil.
-local function copy(from)
-   local to = {}
-   for k, v in pairs(from or {}) do to[k] = v end
-   return to
 end
 
 -- Certain options should always get propagated onwards when a function that
@@ -477,7 +465,7 @@ local parser = (function()
                     local raw = string.char(unpack(chars))
                     local formatted = raw:gsub("[\1-\31]", function (c)
                                                    return '\\' .. c:byte() end)
-                    local loadFn = loadCode(('return %s'):format(formatted), nil, filename)
+                    local loadFn = (loadstring or load)(('return %s'):format(formatted))
                     dispatch(loadFn())
                 elseif prefixes[b] then
                     -- expand prefix byte into wrapping form eg. '`a' into '(quote a)'
@@ -2442,6 +2430,18 @@ end
 
 local function currentGlobalNames(env)
     return kvmap(env or _G, globalUnmangling)
+end
+
+-- Load code with an environment in all recent Lua versions
+local function loadCode(code, environment, filename)
+    environment = environment or _ENV or _G
+    if setfenv and loadstring then
+        local f = assert(loadstring(code, filename))
+        setfenv(f, environment)
+        return f
+    else
+        return assert(load(code, filename, "t", environment))
+    end
 end
 
 local function eval(str, options, ...)
