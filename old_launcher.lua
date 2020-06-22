@@ -7,7 +7,7 @@
 
 local fennel_dir = arg[0]:match("(.-)[^\\/]+$")
 package.path = fennel_dir .. "?.lua;" .. package.path
-local fennel = require('fennel')
+local fennel = require('old_fennel')
 local unpack = unpack or table.unpack
 
 local help = [[

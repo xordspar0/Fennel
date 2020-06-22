@@ -24,7 +24,10 @@ LAUNCHER=$(LUA) old_launcher.lua
 
 # Precompile fennel libraries
 %.lua: %.fnl fennel.lua
-	 $(LAUNCHER) --globals "" --compile $< > $@
+	$(LAUNCHER) --globals "" --compile $< > $@
+
+fennel.lua: fennel.fnl utils.lua parser.lua compiler.lua specials.lua
+	$(LAUNCHER) --compile $< > $@
 
 # All-in-one pure-lua script:
 fennel: launcher.fnl fennel.lua fennelview.lua fennelfriend.lua fennelbinary.fnl
